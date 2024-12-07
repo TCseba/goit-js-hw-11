@@ -5,14 +5,13 @@ import 'simplelightbox/dist/simple-lightbox.min.css';
 
 const searchForm = document.querySelector('#search-form');
 const gallery = document.querySelector('.gallery');
-const loadMoreBtn = document.querySelector('.load-more');
 
 let currentPage = 1;
 let currentQuery = '';
 let lightbox;
+let observer;
 
 searchForm.addEventListener('submit', onSearch);
-loadMoreBtn.addEventListener('click', onLoadMore);
 
 async function onSearch(event) {
   event.preventDefault();
@@ -24,7 +23,6 @@ async function onSearch(event) {
 
   currentPage = 1;
   gallery.innerHTML = '';
-  loadMoreBtn.hidden = true;
 
   Notiflix.Loading.standard('Loading...');
 
@@ -39,18 +37,19 @@ async function onSearch(event) {
 
     renderGallery(data.hits);
     Notiflix.Notify.success(`Hooray! We found ${data.totalHits} images.`);
-    if (data.totalHits > 40) {
-      loadMoreBtn.hidden = false;
-    }
 
     lightbox = new SimpleLightbox('.gallery a'); // Inițializează SimpleLightbox
+    observer = new IntersectionObserver(onEntry, {
+      rootMargin: '200px',
+    });
+    observer.observe(document.querySelector('.scroll-sentinel'));
   } catch (error) {
     Notiflix.Loading.remove();
     Notiflix.Notify.failure('Oops! Something went wrong. Please try again later.');
   }
 }
 
-async function onLoadMore() {
+async function loadMore() {
   currentPage += 1;
   Notiflix.Loading.standard('Loading...');
 
@@ -62,9 +61,20 @@ async function onLoadMore() {
 
     lightbox.refresh(); // Reîmprospătează SimpleLightbox după adăugarea de noi imagini
 
+    const { height: cardHeight } = document
+      .querySelector('.gallery')
+      .firstElementChild.getBoundingClientRect();
+
+    window.scrollBy({
+      top: cardHeight * 2,
+      behavior: 'smooth',
+    });
+
     if (currentPage * 40 >= data.totalHits) {
       Notiflix.Notify.info("We're sorry, but you've reached the end of search results.");
-      loadMoreBtn.hidden = true;
+      observer.disconnect();
+    } else {
+      observer.observe(document.querySelector('.scroll-sentinel')); // Continuăm observarea
     }
   } catch (error) {
     Notiflix.Loading.remove();
@@ -95,4 +105,20 @@ function renderGallery(images) {
     </div>
   `).join('');
   gallery.insertAdjacentHTML('beforeend', markup);
+
+  // Eliminăm și recreăm sentinelul după fiecare grup de imagini
+  if (document.querySelector('.scroll-sentinel')) {
+    document.querySelector('.scroll-sentinel').remove();
+  }
+  const sentinel = document.createElement('div');
+  sentinel.classList.add('scroll-sentinel');
+  gallery.appendChild(sentinel);
+}
+
+function onEntry(entries) {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      loadMore();
+    }
+  });
 }
